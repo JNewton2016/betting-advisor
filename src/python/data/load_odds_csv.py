@@ -11,10 +11,11 @@ import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
 
+from db_helpers import get_or_create_team, get_or_create_match, parse_match_date
+
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 
 
 #Map columns in the CSV files to the corresponding columns in the database tables (snake_case to camelCase)
@@ -31,51 +32,23 @@ MARKET_COLUMN_MAPPING = {
     "H": ("match_result", "home"),
     "D": ("match_result", "draw"),
     "A": ("match_result", "away"),
-    "O05": ("over_under_05", "over"),
-    "U05": ("over_under_05", "under"),
-    "O15": ("over_under_15", "over"),
-    "U15": ("over_under_15", "under"),
-    "O25": ("over_under_25", "over"),
-    "U25": ("over_under_25", "under"),
-    "O35": ("over_under_35", "over"),
-    "U35": ("over_under_35", "under"),
-    "O45": ("over_under_45", "over"),
-    "U45": ("over_under_45", "under"),
+    "O05": ("over_under_0.5", "over"),
+    "U05": ("over_under_0.5", "under"),
+    "O15": ("over_under_1.5", "over"),
+    "U15": ("over_under_1.5", "under"),
+    "O25": ("over_under_2.5", "over"),
+    "U25": ("over_under_2.5", "under"),
+    "O35": ("over_under_3.5", "over"),
+    "U35": ("over_under_3.5", "under"),
+    "O45": ("over_under_4.5", "over"),
+    "U45": ("over_under_4.5", "under"),
     "BTTSY": ("btts", "yes"),
     "BTTSN": ("btts", "no"),
 }
 
-MATCH_DATE_FORMAT = "%d/%m/%Y %H:%M"
 
 
 #FUNCTIONS
-
-#searches a team by name, inserts if new and then always returns the team id
-def get_or_create_team(cur, name):
-    cur.execute(
-        """
-        INSERT INTO teams (name) VALUES (%s)
-        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-        RETURNING id
-        """,
-        (name,),
-    )
-    return cur.fetchone()[0]
-
-#same for matches, but also updates league and season if the match already exists
-def get_or_create_match(cur, home_id, away_id, league, match_date, season):
-    cur.execute(
-        """
-        INSERT INTO matches (home_team_id, away_team_id, league, match_date, season, status)
-        VALUES (%s, %s, %s, %s, %s, 'finished')
-        ON CONFLICT (match_date, home_team_id, away_team_id)
-        DO UPDATE SET league = EXCLUDED.league, season = EXCLUDED.season
-        RETURNING id
-        """,
-        (home_id, away_id, league, match_date, season),
-    )
-    return cur.fetchone()[0]
-
 
 def upsert_odds(cur, match_id, bookmaker, market, selection, decimal_odds):
     cur.execute(
@@ -89,9 +62,11 @@ def upsert_odds(cur, match_id, bookmaker, market, selection, decimal_odds):
     )
 
 
+
+
 #function to load the CSV file and insert/update the data into the database
 #opens one database transaction for the file, processing every row and commits at the end
-def load_csv(path, bookmaker):
+def load_odds_csv(path, bookmaker):
 
     df = pd.read_csv(path)
 
@@ -103,15 +78,14 @@ def load_csv(path, bookmaker):
     matches_processed = 0
     odds_processed = 0
 
-
+    
     try:
-        for _, row in df.iterrows():
-            home_id = get_or_create_team(cur, row[COLUMN_MAPPING["home_team"]]).strip()
-            away_id = get_or_create_team(cur, row[COLUMN_MAPPING["away_team"]]).strip()
+        #run through each row in the df, populate teams and match tables, then populate odds table for each market per match
+        for i, (_, row) in enumerate(df.iterrows()):
+            home_id = get_or_create_team(cur, str(row[COLUMN_MAPPING["home_team"]]).strip())
+            away_id = get_or_create_team(cur, str(row[COLUMN_MAPPING["away_team"]]).strip())
 
-            match_date = datetime.strptime(
-                row[COLUMN_MAPPING["match_date"]], MATCH_DATE_FORMAT
-            )
+            match_date = parse_match_date(row[COLUMN_MAPPING["match_date"]])
 
             match_id = get_or_create_match(
                 cur,
@@ -123,6 +97,7 @@ def load_csv(path, bookmaker):
             )
             matches_processed += 1
 
+            #run through each market column and its selections, and populate odds per selection per match
             for col, (market, selection) in MARKET_COLUMN_MAPPING.items():
                 if col in row and pd.notna(row[col]):
                     upsert_odds(
@@ -135,6 +110,11 @@ def load_csv(path, bookmaker):
                     )
                     odds_processed += 1
 
+            #prints status of matches processed
+            if (i + 1) % 200 == 0:
+                print(f"  ...{i + 1}/{len(df)} rows processed")
+
+        #commit the transaction to DB
         conn.commit()
         print(f"Processed {matches_processed} matches and {odds_processed} odds for bookmaker from {path}")
 
@@ -147,6 +127,7 @@ def load_csv(path, bookmaker):
         conn.close()
 
 
+#run the script from command line with the path to the CSV file and the bookmaker name as arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Load Premier League and Championship odds from Footiqo CSV files into the database."
@@ -159,4 +140,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    load_csv(args.csv_path, args.bookmaker)
+    load_odds_csv(args.csv_path, args.bookmaker)
