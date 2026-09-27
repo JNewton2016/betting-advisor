@@ -9,6 +9,7 @@ This file marks my weekly progress into this project.
 
 ## Week 2 (w/c 14/09/2026)
 - Built function to calculate a team's average stats based on previous 5 games
+- Begun engineering of features from match stats
 
 ## Week 3 (w/c 21/09/2026)
 
