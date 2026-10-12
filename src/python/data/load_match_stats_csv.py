@@ -28,31 +28,78 @@ def set_match_goals(cur, match_id, home_goals, away_goals):
     )
 
 
-def upsert_team_match_stats(cur, match_id, team_id, opponent_id, is_home, match_date, league, goals_for, goals_against, shots, shots_on_target, shots_off_target, possession_pct, corners, yellow_cards):
-
+def upsert_team_match_stats(
+    cur,
+    match_id,
+    team_id,
+    opponent_id,
+    is_home,
+    match_date,
+    league,
+    goals_for,
+    goals_against,
+    shots,
+    shots_on_target,
+    shots_off_target,
+    possession_pct,
+    corners,
+    yellow_cards,
+    shots_against,
+    shots_on_target_against,
+    shots_off_target_against,
+    possession_pct_against,
+    corners_against,
+    yellow_cards_against,
+):
     cur.execute(
         """
         INSERT INTO team_match_stats (
-        match_id, team_id, opponent_id, is_home, match_date, league, goals_for, goals_against, shots, shots_on_target, shots_off_target, possession_pct, corners, yellow_cards
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            match_id, team_id, opponent_id, is_home, match_date, league,
+            goals_for, goals_against, shots, shots_on_target, shots_off_target,
+            possession_pct, corners, yellow_cards,
+            shots_against, shots_on_target_against, shots_off_target_against,
+            possession_pct_against, corners_against, yellow_cards_against
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 
         ON CONFLICT (match_id, team_id) DO UPDATE SET
-        opponent_id = EXCLUDED.opponent_id,
-        is_home = EXCLUDED.is_home,
-        goals_for = EXCLUDED.goals_for,
-        goals_against = EXCLUDED.goals_against,
-        shots = EXCLUDED.shots,
-        shots_on_target = EXCLUDED.shots_on_target,
-        shots_off_target = EXCLUDED.shots_off_target,
-        possession_pct = EXCLUDED.possession_pct,
-        corners = EXCLUDED.corners,
-        yellow_cards = EXCLUDED.yellow_cards
+            opponent_id = EXCLUDED.opponent_id,
+            is_home = EXCLUDED.is_home,
+            goals_for = EXCLUDED.goals_for,
+            goals_against = EXCLUDED.goals_against,
+            shots = EXCLUDED.shots,
+            shots_on_target = EXCLUDED.shots_on_target,
+            shots_off_target = EXCLUDED.shots_off_target,
+            possession_pct = EXCLUDED.possession_pct,
+            corners = EXCLUDED.corners,
+            yellow_cards = EXCLUDED.yellow_cards,
+            shots_against = EXCLUDED.shots_against,
+            shots_on_target_against = EXCLUDED.shots_on_target_against,
+            shots_off_target_against = EXCLUDED.shots_off_target_against,
+            possession_pct_against = EXCLUDED.possession_pct_against,
+            corners_against = EXCLUDED.corners_against,
+            yellow_cards_against = EXCLUDED.yellow_cards_against
         """,
-
         (
-            match_id, team_id, opponent_id, is_home, match_date, league,
-            int(goals_for), int(goals_against),int(shots), int(shots_on_target), int(shots_off_target),
-            float(possession_pct), int(corners), int(yellow_cards)
+            match_id,
+            team_id,
+            opponent_id,
+            is_home,
+            match_date,
+            league,
+            int(goals_for),
+            int(goals_against),
+            int(shots),
+            int(shots_on_target),
+            int(shots_off_target),
+            float(possession_pct),
+            int(corners),
+            int(yellow_cards),
+            int(shots_against),
+            int(shots_on_target_against),
+            int(shots_off_target_against),
+            float(possession_pct_against),
+            int(corners_against),
+            int(yellow_cards_against),
         ),
     )
 
@@ -93,15 +140,19 @@ def load_match_stats_csv(scores_path, corners_cards_path, shots_poss_path):
             #home team
             upsert_team_match_stats(cur, match_id, home_id, away_id, True, match_date, row["League"], goals_for=row["FTHG"], goals_against=row["FTAG"],
                                     shots=row["HTSFT"], shots_on_target=row["HSONFT"], shots_off_target=row["HSOFFFT"],
-                                    possession_pct=row["HBPFT"], corners=row["HCFT"], yellow_cards=row["HYCFT"])
+                                    possession_pct=row["HBPFT"], corners=row["HCFT"], yellow_cards=row["HYCFT"],
+                                    shots_against=row["ATSFT"], shots_on_target_against=row["ASONFT"], corners_against=row["ACFT"],
+                                    yellow_cards_against=row["AYCFT"], shots_off_target_against=row["ASOFFFT"], possession_pct_against=row["ABPFT"])
 
             #away team
             upsert_team_match_stats(cur, match_id, away_id, home_id, False, match_date, row["League"], goals_for=row["FTAG"], goals_against=row["FTHG"],
                                     shots=row["ATSFT"], shots_on_target=row["ASONFT"], shots_off_target=row["ASOFFFT"],
-                                    possession_pct=row["ABPFT"], corners=row["ACFT"], yellow_cards=row["AYCFT"])
+                                    possession_pct=row["ABPFT"], corners=row["ACFT"], yellow_cards=row["AYCFT"], 
+                                    shots_against=row["HTSFT"], shots_on_target_against=row["HSONFT"], corners_against=row["HCFT"],
+                                    yellow_cards_against=row["HYCFT"], shots_off_target_against=row["HSOFFFT"], possession_pct_against=row["HBPFT"])
             matches_processed += 1
 
-            if (i + 1) % 200 == 0:
+            if (i + 1) % 200 == 0:  
                 print(f"  ...{i + 1}/{len(merged_df)} rows processed")
 
         conn.commit()
