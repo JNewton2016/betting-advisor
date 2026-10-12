@@ -4,27 +4,24 @@
 #team form
 def get_team_form(cur, team_id, as_of_date, window=5, venue="all"):
 
+    venue_filter = ""
+
     if venue == "home":
-        venue_filter = "m.home_team_id = %(team_id)s"
+        venue_filter = "AND is_home = TRUE"
     elif venue == "away":
-        venue_filter = "m.away_team_id = %(team_id)s"
-    else:
-        venue_filter = "(m.home_team_id = %(team_id)s OR m.away_team_id = %(team_id)s)"
+        venue_filter = "AND is_home = FALSE"
 
     #pulls a DB sample of a teams last 5 games as of a given date with goals for/against
     cur.execute(
         f"""
 
-        SELECT
-            m.home_team_id,
-                CASE WHEN m.home_team_id = %(team_id)s THEN m.home_goals ELSE m.away_goals END AS goals_for,
-                CASE WHEN m.home_team_id = %(team_id)s THEN m.away_goals ELSE m.home_goals END AS goals_against
-            FROM matches m
-            WHERE {venue_filter}
-                AND m.match_date < %(as_of_date)s
-                AND m.status = 'finished'
-            ORDER BY m.match_date DESC
-            LIMIT %(window)s
+        SELECT goals_for, goals_against
+        FROM team_match_stats tms
+        WHERE tms.team_id = %(team_id)s
+            AND tms.match_date < %(as_of_date)s
+            {venue_filter}
+        ORDER BY tms.match_date DESC
+        LIMIT %(window)s
         """,
         {
             "team_id": team_id,
@@ -51,7 +48,7 @@ def get_team_form(cur, team_id, as_of_date, window=5, venue="all"):
     goals_for_total = goals_against_total = 0
 
     #
-    for _, goals_for, goals_against in rows:
+    for goals_for, goals_against in rows:
 
         goals_for_total += goals_for
         goals_against_total += goals_against
@@ -80,38 +77,36 @@ def get_team_form(cur, team_id, as_of_date, window=5, venue="all"):
     }
 
 #get numbers for any stat in previous 5 games
-def get_stat_form(cur, team_id, as_of_date, home_col, away_col, window=5, venue="all", join_on_stats=True):
+def get_stat_form(cur, team_id, as_of_date, stat_col, window=5, venue="all"):
+
+    venue_filter = ""
 
     if venue == "home":
-        venue_filter = "m.home_team_id = %(team_id)s"
+        venue_filter = "AND is_home = TRUE"
     elif venue == "away":
-        venue_filter = "m.away_team_id = %(team_id)s"
-    else:
-        venue_filter = "(m.home_team_id = %(team_id)s OR m.away_team_id = %(team_id)s)"
+        venue_filter = "AND is_home = FALSE"
 
-    join_clause = f"JOIN match_stats ms ON ms.match_id = m.id" if join_on_stats else ""
-    table_prefix = "ms." if join_on_stats else "m."
+    against_col = f"{stat_col}_against"
 
     cur.execute(
         f"""
-        SELECT
-            CASE WHEN m.home_team_id = %(team_id)s THEN {table_prefix}{home_col} ELSE {table_prefix}{away_col} END AS value_for,
-            CASE WHEN m.home_team_id = %(team_id)s THEN {table_prefix}{away_col} ELSE {table_prefix}{home_col} END AS value_against
-        FROM matches m
-        {join_clause}
-        WHERE {venue_filter}
-            AND m.match_date < %(as_of_date)s
-            AND m.status = 'finished'
-        ORDER BY m.match_date DESC
-        LIMIT %(window)s
-        """,
 
+        SELECT {stat_col}, {against_col}
+        FROM team_match_stats tms
+        WHERE tms.team_id = %(team_id)s
+            AND tms.match_date < %(as_of_date)s
+            {venue_filter}
+        ORDER BY tms.match_date DESC
+        LIMIT %(window)s
+
+        """,
         {
             "team_id": team_id,
             "as_of_date": as_of_date,
             "window": window
         }
-    )
+    )  
+
     rows = cur.fetchall()
 
     matches_played = len(rows)
@@ -141,20 +136,14 @@ if __name__ == "__main__":
     cur = conn.cursor()
 
     #hardcoded DB test
-    test_team_id = 2664 #arsenal
+    test_team_id = 14148  # arsenal
     test_date = date(2024, 3, 1)
-
-    result = get_team_form(cur, test_team_id, as_of_date=date(2024, 3, 1), window=5)
-    print(f"Overall form: {result}")
-
-    home_result = get_team_form(cur, test_team_id, as_of_date=date(2024, 3, 1), window=5, venue="home")
-    print(f"Home form: {home_result}")
-
-    shots = get_stat_form(cur, test_team_id, test_date, "home_shots", "away_shots")
-    print(f"Shots: {shots}")
-
-    corners = get_stat_form(cur, test_team_id, test_date, "home_corners", "away_corners")
-    print(f"Corners: {corners}")
+ 
+    print(f"Overall form: {get_team_form(cur, test_team_id, test_date)}")
+    print(f"Home form: {get_team_form(cur, test_team_id, test_date, venue='home')}")
+    print(f"Shots: {get_stat_form(cur, test_team_id, test_date, 'shots')}")
+    print(f"Corners: {get_stat_form(cur, test_team_id, test_date, 'corners')}")
+    print(f"Cards: {get_stat_form(cur, test_team_id, test_date, 'yellow_cards')}")
 
     cur.close()
     conn.close()
