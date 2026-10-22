@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL").replace("postgresql://", "postgresql+psycopg2://", 1))
 
+#pull data from the database into a pandas dataframe
 df = pd.read_sql("SELECT * FROM team_match_stats", engine)
 arsenal_id = pd.read_sql("SELECT id FROM teams WHERE name = 'Arsenal'", engine).iloc[0, 0] #get arsenal id
 engine.dispose()
@@ -58,3 +59,23 @@ cols = ["match_date", "points_rolling", "goals_for_rolling", "goals_against_roll
 arsenal = df[df["team_id"] == arsenal_id]
 check = arsenal[arsenal["match_date"] >= "2024-08-10"].head(10)
 print(check[cols])
+
+
+#============================
+# Home/Away Merge
+#============================
+
+rolling_cols = [c for c in df.columns if "_rolling" in c]
+side_cols = ["team_id", "goals_for", "goals_against", "matches_sampled"]
+
+#split two rows per match into home and away dataframes
+home = df[df["is_home"]][["match_id", "match_date", "league"] + side_cols] #match date and league are identical for h & a
+away = df[~df["is_home"]][["match_id"] + side_cols]
+
+#prefix every column except the join key
+home = home.rename(columns={c: f"home_{c}" for c in side_cols})
+away = away.rename(columns={c: f"away_{c}" for c in side_cols})
+
+#merge to one row per match
+matches = pd.merge(home, away, on="match_id", how="inner", validate="one_to_one")
+
