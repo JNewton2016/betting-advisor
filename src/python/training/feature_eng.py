@@ -57,7 +57,7 @@ cols = ["match_date", "points_rolling", "goals_for_rolling", "goals_against_roll
         "shots_rolling", "corners_rolling", "yellow_cards_rolling", "matches_sampled"]
 
 arsenal = df[df["team_id"] == arsenal_id]
-check = arsenal[arsenal["match_date"] >= "2024-08-10"].head(10)
+check = arsenal[arsenal["match_date"] >= "2024-08-10"].head(1)
 print(check[cols])
 
 
@@ -66,7 +66,7 @@ print(check[cols])
 #============================
 
 rolling_cols = [c for c in df.columns if "_rolling" in c]
-side_cols = ["team_id", "goals_for", "goals_against", "matches_sampled"]
+side_cols = ["team_id", "goals_for", "goals_against", "matches_sampled"] + rolling_cols 
 
 #split two rows per match into home and away dataframes
 home = df[df["is_home"]][["match_id", "match_date", "league"] + side_cols] #match date and league are identical for h & a
@@ -79,3 +79,20 @@ away = away.rename(columns={c: f"away_{c}" for c in side_cols})
 #merge to one row per match
 matches = pd.merge(home, away, on="match_id", how="inner", validate="one_to_one")
 
+
+#============================
+# Feature Engineering
+#============================
+
+hg, ag = matches["home_goals_for"], matches["away_goals_for"]
+
+matches["result"] = np.select([hg > ag, hg == ag], ["H", "D"], default="A")
+matches["total_goals"] = hg + ag
+matches["btts"] = (hg > 0) & (ag > 0)
+
+#columns for model training
+feature_cols = [c for c in matches.columns if "_rolling" in c] + ["home_matches_sampled", "away_matches_sampled"]
+
+usable = matches[(matches["home_matches_sampled"] >= 3) & (matches["away_matches_sampled"] >= 3)] #only use matches where both teams have at least 3 matches sampled
+print(len(usable))
+print(usable[feature_cols].isna().sum().sum())
