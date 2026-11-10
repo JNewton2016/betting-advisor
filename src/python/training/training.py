@@ -1,5 +1,9 @@
 from feature_eng import build_dataset
+
 from sklearn.metrics import log_loss, accuracy_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
 
 import pandas as pd
 import numpy as np
@@ -35,5 +39,25 @@ def evaluate(y_labels, proba):
 ## naive baseline - predict training-set proportions for each clas  s(match)
 props = train["result"].value_counts(normalize=True).reindex(classes).values
 baseline = np.tile(props, (len(validate), 1))
-print("Baseline Brier Score Loss:", evaluate(validate["result"], baseline))
 
+brier, logloss, acc = evaluate(validate["result"], baseline)
+print(f"Baseline: Brier {brier:.4f}  LogLoss {logloss:.4f}  Acc {acc:.4f}")
+
+
+#======================
+# Logistic Regression Model
+#======================
+
+logreg = LogisticRegression(max_iter=1000)
+
+model = Pipeline([
+    ("scaler", StandardScaler()),
+    ("logreg", logreg)
+])
+
+model.fit(train[feature_cols], train["result"])
+
+y_proba = model.predict_proba(validate[feature_cols])
+
+brier, logloss, acc = evaluate(validate["result"], y_proba)
+print(f"Logistic: Brier {brier:.4f}  LogLoss {logloss:.4f}  Acc {acc:.4f}")
